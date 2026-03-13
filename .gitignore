@@ -1,0 +1,22 @@
+# Dependensi (Folder ini sangat besar, jangan pernah di-upload)
+node_modules/
+
+# File Environment (Sangat rahasia, berisi API Key/Password DB)
+.env
+.env.local
+.env.*.local
+
+# Logs (Catatan error saat runtime)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs
+*.log
+
+# Build output (Jika kamu pakai TypeScript atau build tools)
+dist/
+build/
+
+# File Sistem Operasi (File sampah dari Windows/Mac)
+.DS_Store
+Thumbs.db

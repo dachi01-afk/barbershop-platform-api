@@ -14,9 +14,13 @@ const findById = async (id) => {
 
 const verifyUserEmail = async (email) => {
   return await User.update(
-    { email_verified_at: new Date() },
+    { email_verified_at: new Date(), is_active: true },
     { where: { email } },
   );
+};
+
+const updatePassword = async (id, password) => {
+  return await User.update({ password }, { where: { id } });
 };
 
 module.exports = {
@@ -24,4 +28,5 @@ module.exports = {
   createUser,
   findById,
   verifyUserEmail,
+  updatePassword,
 };

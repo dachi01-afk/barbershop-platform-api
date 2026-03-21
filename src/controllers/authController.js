@@ -1,5 +1,13 @@
 const authService = require("../services/authService");
 const jwt = require("jsonwebtoken");
+const verifySuccessTemplate = require("../templates/email/verifySuccessTemplate");
+const verifyErrorTemplate = require("../templates/email/verifyErrorTemplate");
+const {
+  registerValidation,
+  loginValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+} = require("../validations/authValidation");
 
 const verifyAccount = async (req, res) => {
   try {
@@ -10,31 +18,31 @@ const verifyAccount = async (req, res) => {
     const user = await authService.findByEmail(decoded.email);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.send(verifyErrorTemplate());
     }
 
     if (user.email_verified_at) {
-      return res.json({
-        message: "Account already verified",
-      });
+      return res.send(verifySuccessTemplate());
     }
 
     await authService.verifyUserEmail(decoded.email);
 
-    return res.json({
-      message: "Account verified successfully",
-    });
+    return res.send(verifySuccessTemplate());
   } catch (error) {
-    return res.status(400).json({
-      message: "Invalid or expired token",
-    });
+    return res.send(verifyErrorTemplate());
   }
 };
 
 const register = async (req, res) => {
   try {
+    const { error } = registerValidation.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
     const user = await authService.register(req.body);
 
     res.json({
@@ -51,6 +59,14 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
+    const { error } = loginValidation.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
     const { email, password } = req.body;
 
     const result = await authService.login(email, password);
@@ -74,9 +90,57 @@ const me = async (req, res) => {
   });
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { error } = forgotPasswordValidation.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
+    await authService.forgotPassword(req.body.email);
+
+    res.json({
+      message: "If the email is registered, a reset link has been sent.",
+    });
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { error } = resetPasswordValidation.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({
+        message: error.details[0].message,
+      });
+    }
+
+    const { token, password } = req.body;
+
+    await authService.resetPassword(token, password);
+
+    res.json({
+      message: "Password successfully reset",
+    });
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   me,
+  forgotPassword,
+  resetPassword,
   verifyAccount,
 };

@@ -14,7 +14,7 @@ const loginValidation = Joi.object({
   password: Joi.string().required(),
 });
 
-// FORGOT PASSWORD
+// FORGOT PASSWORDmodule.exports = validationMiddleware;
 const forgotPasswordValidation = Joi.object({
   email: Joi.string().email().required(),
 });

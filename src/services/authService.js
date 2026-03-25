@@ -1,19 +1,20 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const ms = require("ms");
 const { sendEmail } = require("../utils/mailer");
 const userRepository = require("../repositories/userRepository");
-const verifyEmailTemplate = require("../templates/email/verifyEmailTemplate");
 const passwordResetRepository = require("../repositories/passwordResetRepository");
+const refreshTokenRepository = require("../repositories/refreshTokenRepository");
+const tokenBlacklistRepository = require("../repositories/tokenBlacklistRepository");
+const verifyEmailTemplate = require("../templates/email/verifyEmailTemplate");
 const resetPasswordTemplate = require("../templates/email/resetPasswordTemplate");
 
 const generateVerificationLink = (user) => {
   // Buat Token
-  const verificationToken = jwt.sign(
-    { email: user.email },
-    process.env.EMAIL_VERIFICATION_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN },
-  );
+  const verificationToken = jwt.sign({ email: user.email }, process.env.EMAIL_VERIFICATION_SECRET, {
+    expiresIn: process.env.EMAIL_VERIFICATION_EXPIRES_IN,
+  });
 
   // Buat Link
   const verificationLink = `${process.env.BASE_URL}/api/auth/verify?token=${verificationToken}`;
@@ -68,16 +69,54 @@ const login = async (email, password) => {
     throw new Error("Invalid credentials");
   }
 
-  const token = jwt.sign(
-    {
-      id: user.id,
-      role_id: user.role_id,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN },
-  );
+  const accessToken = jwt.sign({ id: user.id, role_id: user.role_id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
-  return { user, token };
+  const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET, { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN });
+
+  await refreshTokenRepository.create({
+    user_id: user.id,
+    token: refreshToken,
+    expires_at: new Date(Date.now() + ms(process.env.JWT_REFRESH_EXPIRES_IN)),
+  });
+
+  delete user.password;
+
+  return { user, accessToken, refreshToken };
+};
+
+const refreshToken = async (token) => {
+  const stored = await refreshTokenRepository.find(token);
+
+  if (!stored) {
+    throw new Error("Invalid refresh token");
+  }
+
+  if (stored.expires_at < new Date()) {
+    throw new Error("Refresh token expired");
+  }
+
+  const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+
+  const newAccessToken = jwt.sign({ id: decoded.id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  });
+
+  return { accessToken: newAccessToken };
+};
+
+const logout = async (accessToken, refreshToken) => {
+  const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
+
+  await tokenBlacklistRepository.create({
+    token: accessToken,
+    expires_at: new Date(decoded.exp * 1000),
+  });
+
+  if (refreshToken) {
+    await refreshTokenRepository.deleteByToken(refreshToken);
+  }
+
+  return true;
 };
 
 const findByEmail = async (email) => {
@@ -97,14 +136,11 @@ const forgotPassword = async (email) => {
 
   await passwordResetRepository.deleteByUserId(user.id);
 
-  const rawtoken = crypto.randomBytes(32).toString("hex");
+  const rawToken = crypto.randomBytes(32).toString("hex");
 
-  const hashedToken = crypto
-    .createHash("sha256")
-    .update(rawtoken)
-    .digest("hex");
+  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
 
-  const expires = new Date(Date.now() + 15 * 60 * 1000);
+  const expires = new Date(Date.now() + ms(process.env.RESET_PASSWORD_EXPIRES_IN));
 
   await passwordResetRepository.createToken({
     user_id: user.id,
@@ -112,7 +148,7 @@ const forgotPassword = async (email) => {
     expires_at: expires,
   });
 
-  const resetLink = `${process.env.BASE_URL}/api/auth/reset-password?token=${rawtoken}`;
+  const resetLink = `${process.env.BASE_URL}/api/auth/reset-password?token=${rawToken}`;
 
   const html = resetPasswordTemplate(user, resetLink);
 
@@ -153,6 +189,8 @@ const resetPassword = async (token, newPassword) => {
 module.exports = {
   register,
   login,
+  refreshToken,
+  logout,
   findByEmail,
   verifyUserEmail,
   forgotPassword,

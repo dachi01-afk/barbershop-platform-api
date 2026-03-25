@@ -2,12 +2,6 @@ const authService = require("../services/authService");
 const jwt = require("jsonwebtoken");
 const verifySuccessTemplate = require("../templates/email/verifySuccessTemplate");
 const verifyErrorTemplate = require("../templates/email/verifyErrorTemplate");
-const {
-  registerValidation,
-  loginValidation,
-  forgotPasswordValidation,
-  resetPasswordValidation,
-} = require("../validations/authValidation");
 
 const verifyAccount = async (req, res) => {
   try {
@@ -35,14 +29,6 @@ const verifyAccount = async (req, res) => {
 
 const register = async (req, res) => {
   try {
-    const { error } = registerValidation.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        message: error.details[0].message,
-      });
-    }
-
     const user = await authService.register(req.body);
 
     res.json({
@@ -59,21 +45,14 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { error } = loginValidation.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        message: error.details[0].message,
-      });
-    }
-
     const { email, password } = req.body;
 
     const result = await authService.login(email, password);
 
     res.json({
       message: "Login success",
-      token: result.token,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
       user: result.user,
     });
   } catch (error) {
@@ -90,16 +69,25 @@ const me = async (req, res) => {
   });
 };
 
+const logout = async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(" ")[1];
+    const { refreshToken } = req.body;
+
+    await authService.logout(token, refreshToken);
+
+    res.json({
+      message: "Logout success",
+    });
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+};
+
 const forgotPassword = async (req, res) => {
   try {
-    const { error } = forgotPasswordValidation.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        message: error.details[0].message,
-      });
-    }
-
     await authService.forgotPassword(req.body.email);
 
     res.json({
@@ -114,14 +102,6 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { error } = resetPasswordValidation.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        message: error.details[0].message,
-      });
-    }
-
     const { token, password } = req.body;
 
     await authService.resetPassword(token, password);
@@ -136,9 +116,27 @@ const resetPassword = async (req, res) => {
   }
 };
 
+const refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    const result = await authService.refreshToken(refreshToken);
+
+    res.json({
+      accessToken: result.accessToken,
+    });
+  } catch (error) {
+    res.status(401).json({
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
+  refreshToken,
+  logout,
   me,
   forgotPassword,
   resetPassword,
